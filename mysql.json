@@ -5,7 +5,7 @@
     "password": "pass",
     "db": "sspanel",
     "node_id": 0,
-    "node_group": 0,
+    "node_group": 1,
     "transfer_mul": 1.0,
     "ssl_enable": 0,
     "ssl_ca": "",
