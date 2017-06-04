@@ -287,6 +287,7 @@ class DbTransfer(TransferBase):
 			"password": "pass",
 			"db": "shadowsocks",
 			"node_id": 0,
+			"node_group": 0,
 			"transfer_mul": 1.0,
 			"ssl_enable": 0,
 			"ssl_ca": "",
@@ -551,7 +552,7 @@ class Dbv3Transfer(DbTransfer):
 		cur = conn.cursor()
 		try:
 			rows = []
-			cur.execute("SELECT " + ','.join(keys) + " FROM user")
+			cur.execute("SELECT " + ','.join(keys) + " FROM user" +"WHERE 'node_group'='" + str(self.cfg["node_group"])
 			for r in cur.fetchall():
 				d = {}
 				for column in range(len(keys)):
