@@ -138,6 +138,7 @@ class TCPRelayHandler(object):
         self._remote_udp = False
         self._config = config
         self._dns_resolver = dns_resolver
+        self._add_ref = 0
         if not self._create_encryptor(config):
             return
 
@@ -217,6 +218,7 @@ class TCPRelayHandler(object):
         self._update_activity()
         self._server.add_connection(1)
         self._server.stat_add(self._client_address[0], 1)
+        self._add_ref = 1
         self.speed_tester_u = SpeedTester(config.get("speed_limit_per_con", 0))
         self.speed_tester_d = SpeedTester(config.get("speed_limit_per_con", 0))
         self._recv_u_max_size = BUF_SIZE
@@ -814,15 +816,15 @@ class TCPRelayHandler(object):
         if self._overhead == 0:
             return recv_buffer_size
         buffer_size = len(sock.recv(recv_buffer_size, socket.MSG_PEEK))
+        frame_size = self._tcp_mss - self._overhead
         if up:
             buffer_size = min(buffer_size, self._recv_u_max_size)
-            self._recv_u_max_size = min(self._recv_u_max_size + self._tcp_mss - self._overhead, BUF_SIZE)
+            self._recv_u_max_size = min(self._recv_u_max_size + frame_size, BUF_SIZE)
         else:
             buffer_size = min(buffer_size, self._recv_d_max_size)
-            self._recv_d_max_size = min(self._recv_d_max_size + self._tcp_mss - self._overhead, BUF_SIZE)
+            self._recv_d_max_size = min(self._recv_d_max_size + frame_size, BUF_SIZE)
         if buffer_size == recv_buffer_size:
             return buffer_size
-        frame_size = self._tcp_mss - self._overhead
         if buffer_size > frame_size:
             buffer_size = int(buffer_size / frame_size) * frame_size
         return buffer_size
@@ -856,6 +858,10 @@ class TCPRelayHandler(object):
                 if self._encrypt_correct:
                     try:
                         obfs_decode = self._obfs.server_decode(data)
+                        if self._stage == STAGE_INIT:
+                            self._overhead = self._obfs.get_overhead(self._is_local) + self._protocol.get_overhead(self._is_local)
+                            server_info = self._protocol.get_server_info()
+                            server_info.overhead = self._overhead
                     except Exception as e:
                         shell.print_exception(e)
                         logging.error("exception from %s:%d" % (self._client_address[0], self._client_address[1]))
@@ -1159,8 +1165,9 @@ class TCPRelayHandler(object):
         self._encryptor = None
         self._dns_resolver.remove_callback(self._handle_dns_resolved)
         self._server.remove_handler(self)
-        self._server.add_connection(-1)
-        self._server.stat_add(self._client_address[0], -1)
+        if self._add_ref > 0:
+            self._server.add_connection(-1)
+            self._server.stat_add(self._client_address[0], -1)
 
 class TCPRelay(object):
     def __init__(self, config, dns_resolver, is_local, stat_callback=None, stat_counter=None):
@@ -1294,9 +1301,9 @@ class TCPRelay(object):
             self._speed_tester_d[uid] = SpeedTester(speed)
 
     def del_user(self, uid):
-        if user in self.server_users:
+        if uid in self.server_users:
             del self.server_users[uid]
-        if user in self.server_users_cfg:
+        if uid in self.server_users_cfg:
             del self.server_users_cfg[uid]
 
     def add_transfer_u(self, user, transfer):
